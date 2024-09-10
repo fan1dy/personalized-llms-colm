@@ -25,15 +25,20 @@ def get_args() -> Namespace:
     return config.parse_args_with_format(format=args.config_format, base_parser=parser, args=rem_args, namespace=args)
 
 
+def get_dataset_from_args(args: Namespace):
+    if args.dataset == 'multiwiki':
+        data_path = "/mloscratch/homes/dfan/codes/efficient-collaborative-instruction-tuning/data-multilingual-no-mixture/4/"
+    elif args.dataset == 'slimpajama':
+        data_path = "/mloscratch/homes/bmessmer/data/efficient-collaborative-instruction-tuning/redpajama-formal/4/"
+    elif args.dataset == 'agnews':
+        data_path = "/mloscratch/homes/dfan/codes/efficient-collaborative-instruction-tuning/data-agnews-no-mixture-v2/4/"
+    return data_path
+
+
 def get_exp_name(args: Namespace) -> str:
     """ Returns the name of the experiment, used for saving models and wandb. """
-    exp_name = f"{args.model}_lr{args.lr}_bs{args.batch_size}x{args.acc_steps}_{args.world_size}nodes"
-    if args.wandb_run_prefix != 'none':
-        exp_name = args.wandb_run_prefix + '_' + exp_name
-    if args.wandb_group != 'none':
-        exp_name = args.wandb_group + '_' + exp_name
-    if 'lora' in args.model:
-        exp_name += f'_lora__rank{args.lora_rank}_alpha{args.lora_alpha}_dropout{args.lora_dropout}'
+    exp_name = f"{args.model}_lr_{args.lr}_bs_{args.batch_size}x{args.acc_steps}_{args.world_size}_nodes"
+    exp_name += f'_lora_rank_{args.lora_rank}_alpha_{args.lora_alpha}_dropout_{args.lora_dropout}'
     exp_name += f'_seed={args.seed}'
     return exp_name
 
@@ -56,8 +61,8 @@ def main(args: Namespace) -> None:
 
     print(f"Loading dataset '{args.dataset}'")
 
-    data = get_dataset(args)
-
+    data_path = get_dataset_from_args(args)
+    
     clients = []
 
     for i in range(args.num_clients):
@@ -107,7 +112,8 @@ def main(args: Namespace) -> None:
     if distributed_backend.is_master_process() and args.wandb:
         params_copy = copy.deepcopy(vars(args))
         del params_copy['device']
-        wandb.init(project=args.wandb_project, group=args.wandb_group, config=params_copy)
+        print("initialize wandb:")
+        wandb.init(project=args.wandb_project, entity='ec-llm', name=get_exp_name(args), config=params_copy)
 
     ckpt_path = os.path.join(args.results_base_folder, args.dataset, args.model, exp_name)
     if not os.path.exists(ckpt_path):
@@ -124,7 +130,7 @@ def main(args: Namespace) -> None:
 
     print(f'\nTraining model={args.model} \n{vars(args)}\n')
 
-    stats = train(clients, data, args.iterations, args.acc_steps, args.batch_size, args.sequence_length,
+    stats = train(clients, data_path, args.iterations, args.acc_steps, args.batch_size, args.sequence_length,
                   eval_freq=args.eval_freq,
                   distributed_backend=distributed_backend,
                   extra_args=args)

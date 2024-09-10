@@ -40,6 +40,65 @@ def lora_model(model: nn.Module, lora_freeze_all_non_lora: bool, lora_allow_embe
                         param.requires_grad = True
 
 
+class LoRALinear2(nn.Linear):
+
+    def __init__(self, in_features: int, out_features: int,
+                 lora_rank: int, lora_alpha: float, lora_dropout: float,
+                 bias: bool = True) -> None:
+        super().__init__(in_features, out_features, bias=bias)
+
+        self.lora_merged = False
+        self.lora_rank = lora_rank
+        if lora_rank > 0:
+            self.lora_scaling = lora_alpha / math.sqrt(self.lora_rank)
+            self.lora_dropout = nn.Dropout(lora_dropout)
+            self.lora_A1 = nn.Parameter(
+                torch.empty((in_features, lora_rank), device=self.weight.device))
+            self.lora_B1 = nn.Parameter(
+                torch.empty((lora_rank, out_features), device=self.weight.device))
+            self.lora_A1.requires_grad = False
+            self.lora_B1.requires_grad = False
+            self.lora_A2 = nn.Parameter(
+                torch.empty((in_features, lora_rank), device=self.weight.device))
+            self.lora_B2 = nn.Parameter(
+                torch.empty((lora_rank, out_features), device=self.weight.device))
+            self.lora_A2.requires_grad = False
+            self.lora_B2.requires_grad = False
+
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        super().reset_parameters()
+        if hasattr(self, 'lora_rank'):
+            torch.nn.init.kaiming_uniform_(self.lora_A1, a=math.sqrt(5))
+            torch.nn.init.kaiming_uniform_(self.lora_A2, a=math.sqrt(5))
+            torch.nn.init.zeros_(self.lora_B1)
+            torch.nn.init.zeros_(self.lora_B2)
+
+    def forward(self, input: Tensor) -> Tensor:
+        x = super().forward(input)
+        if not self.lora_merged and self.lora_rank > 0:
+            x += self.lora_dropout(input) @ (0.5 *(self.lora_A1 @ \
+                 self.lora_B1 + self.lora_A2 @ self.lora_B2)) * self.lora_scaling
+        return x
+
+    def train(self: T, mode: bool = True) -> T:
+        super().train(mode)
+        if mode:
+            if self.lora_merged and self.lora_rank > 0:
+                self.weight.data -= 0.5 *(self.lora_A1 @ self.lora_B1+ self.lora_A2 @ self.lora_B2).T * self.lora_scaling
+                self.lora_merged = False
+        else:
+            if not self.lora_merged and self.lora_rank > 0:
+                self.weight.data += 0.5 *(self.lora_A1 @ self.lora_B1+ self.lora_A2 @ self.lora_B2).T * self.lora_scaling
+                self.lora_merged = True
+        return self
+
+    def eval(self: T) -> T:
+        self.train(mode=False)
+        return self
+
+
 class LoRALinear(nn.Linear):
 
     def __init__(self, in_features: int, out_features: int,
@@ -50,7 +109,7 @@ class LoRALinear(nn.Linear):
         self.lora_merged = False
         self.lora_rank = lora_rank
         if lora_rank > 0:
-            self.lora_scaling = lora_alpha / self.lora_rank
+            self.lora_scaling = lora_alpha / math.sqrt(self.lora_rank)
             self.lora_dropout = nn.Dropout(lora_dropout)
             self.lora_A = nn.Parameter(
                 torch.empty((in_features, lora_rank), device=self.weight.device))
@@ -89,7 +148,6 @@ class LoRALinear(nn.Linear):
     def eval(self: T) -> T:
         self.train(mode=False)
         return self
-
 
 class LayerNorm(nn.Module):
     """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
@@ -169,16 +227,17 @@ class CausalSelfAttention(nn.Module):
         return y
 
 
+
 class MLP(nn.Module):
 
     def __init__(self, config: Namespace) -> None:
         super().__init__()
         if config.lora_mlp:
-            self.c_fc = LoRALinear(config.n_embd, 4 * config.n_embd, bias=config.bias,
+            self.c_fc = LoRALinear2(config.n_embd, 4 * config.n_embd, bias=config.bias,
                                    lora_rank=config.lora_rank,
                                    lora_alpha=config.lora_alpha,
                                    lora_dropout=config.lora_dropout)
-            self.c_proj = LoRALinear(4 * config.n_embd, config.n_embd, bias=config.bias,
+            self.c_proj = LoRALinear2(4 * config.n_embd, config.n_embd, bias=config.bias,
                                      lora_rank=config.lora_rank,
                                      lora_alpha=config.lora_alpha,
                                      lora_dropout=config.lora_dropout)
@@ -345,7 +404,6 @@ class GPTLoRA(nn.Module):
         for name, param in model.named_parameters():
             if 'lora' in name:
                 sd_hf[name] = param
-
         model.load_state_dict(sd_hf)
         return model
 

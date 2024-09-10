@@ -5,6 +5,7 @@ from typing import List, Union, Dict, Tuple
 
 import numpy as np
 import torch
+import os
 import wandb
 from torch import nn
 from torch.optim import Optimizer
@@ -16,7 +17,7 @@ from distributed.ddp import DataParallelDistributedBackend
 from distributed.single import SingleNodeBackend
 
 
-def train_lora(clients: List[List[nn.Module | Optimizer | LRScheduler]], data: Dict[str, List[np.ndarray]],
+def train_lora(clients: List[List[nn.Module | Optimizer | LRScheduler]], data_path: str,
                iterations: int, acc_steps: int, batch_size: int, sequence_length: int, eval_freq: int,
                distributed_backend: Union[DataParallelDistributedBackend, SingleNodeBackend],
                extra_args: Namespace) -> Dict[str, List[List[float]]]:
@@ -31,6 +32,17 @@ def train_lora(clients: List[List[nn.Module | Optimizer | LRScheduler]], data: D
     stats = {'train_loss': [[] for _ in range(num_clients)], 'val_loss': [[] for _ in range(num_clients)],
              'val_pp': [[] for _ in range(num_clients)], 'val_acc': [[] for _ in range(num_clients)]}
 
+    data = {}
+    data['train'] = []
+    data['ref'] = []
+    data['val'] = []
+    for i in range(num_clients):
+        local_train_data_path = os.path.join(data_path, "train_{}.bin".format(i))
+        local_test_data_path = os.path.join(data_path, "test_{}.bin".format(i))
+        local_valid_data_path = os.path.join(data_path, "valid_{}.bin".format(i))
+        data['train'].append(np.memmap(local_train_data_path, dtype=np.uint16, mode='r'))
+        data['val'].append(np.memmap(local_test_data_path, dtype=np.uint16, mode='r'))
+        data['ref'].append(np.memmap(local_valid_data_path, dtype=np.uint16, mode='r'))
     num_substeps_per_epoch = []
     for i in range(num_clients):
         num_substeps_per_epoch.append(len(data['train'][i]) // (batch_size * sequence_length))
@@ -119,7 +131,7 @@ def train_lora(clients: List[List[nn.Module | Optimizer | LRScheduler]], data: D
         if itr[-1] % eval_freq == 0 or itr[-1] == iterations:
             for idx, c in enumerate(clients):
                 model, _, _ = c
-                torch.save(model.state_dict(), f'{idx}_{itr[-1]}')
+                # torch.save(model.state_dict(), f'{idx}_{itr[-1]}')
         t0 = time.time()
 
     return stats
