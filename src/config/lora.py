@@ -57,7 +57,7 @@ def parse_args(base_parser: ArgumentParser, args: List[str], namespace: Namespac
     # LoRA params
     parser.add_argument('--lora_rank', default=8, type=int)
     parser.add_argument('--lora_alpha', default=16., type=float)
-    parser.add_argument('--lora_dropout', default=0.0, type=float)
+    parser.add_argument('--lora_dropout', default=0.1, type=float)
     # LoRA config params
     parser.add_argument('--lora_mlp', action='store_true')
     parser.add_argument('--lora_causal_self_attention', action='store_true')

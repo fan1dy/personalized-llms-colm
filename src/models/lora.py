@@ -50,7 +50,7 @@ class LoRALinear2(nn.Linear):
         self.lora_merged = False
         self.lora_rank = lora_rank
         if lora_rank > 0:
-            self.lora_scaling = lora_alpha / math.sqrt(self.lora_rank)
+            self.lora_scaling = lora_alpha / self.lora_rank
             self.lora_dropout = nn.Dropout(lora_dropout)
             self.lora_A1 = nn.Parameter(
                 torch.empty((in_features, lora_rank), device=self.weight.device))
@@ -109,7 +109,7 @@ class LoRALinear(nn.Linear):
         self.lora_merged = False
         self.lora_rank = lora_rank
         if lora_rank > 0:
-            self.lora_scaling = lora_alpha / math.sqrt(self.lora_rank)
+            self.lora_scaling = lora_alpha / self.lora_rank
             self.lora_dropout = nn.Dropout(lora_dropout)
             self.lora_A = nn.Parameter(
                 torch.empty((in_features, lora_rank), device=self.weight.device))

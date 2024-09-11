@@ -37,7 +37,7 @@ def get_dataset_from_args(args: Namespace):
 
 def get_exp_name(args: Namespace) -> str:
     """ Returns the name of the experiment, used for saving models and wandb. """
-    exp_name = f"{args.model}_lr_{args.lr}_bs_{args.batch_size}x{args.acc_steps}_{args.world_size}_nodes"
+    exp_name = f"{args.model}_lr_{args.lr}_bs_{args.batch_size}x{args.acc_steps}_trust_update_every_{args.trust_freq}"
     exp_name += f'_lora_rank_{args.lora_rank}_alpha_{args.lora_alpha}_dropout_{args.lora_dropout}'
     exp_name += f'_seed={args.seed}'
     return exp_name
